@@ -1,0 +1,27 @@
+
+---
+
+## ⚙️ `.gitignore`
+
+```gitignore
+# Python environment
+venv/
+__pycache__/
+*.pyc
+
+# SQLite database
+*.db
+
+# VSCode & other editor configs
+.vscode/
+.idea/
+
+# Environment variables
+.env
+
+# OS Files
+.DS_Store
+Thumbs.db
+
+# PDFs
+*.pdf
