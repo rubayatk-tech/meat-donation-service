@@ -5,8 +5,10 @@ from reportlab.lib.pagesizes import letter
 from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle
 from dotenv import load_dotenv
+import smtplib
 import os
 import io
+from email.message import EmailMessage
 
 # Load environment variables from .env file
 load_dotenv()
@@ -16,19 +18,16 @@ app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///donations.db'
 app.config['SECRET_KEY'] = os.getenv('FLASK_SECRET_KEY', 'change_this_default_secret')
 db = SQLAlchemy(app)
 
-# Admin credentials from environment
 ADMIN_USERNAME = os.getenv("ADMIN_USERNAME")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")
-
-DELIVERY_INFO = {
-    "Masjid Noor": "📌 Description for Masjid Noor pending final approval.",
-    "Masjid Ibrahim": "📌 Description for Masjid Ibrahim pending final approval."
-}
+SMTP_EMAIL = os.getenv("SMTP_EMAIL")
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
 
 class Donation(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100))
     phone = db.Column(db.String(20), nullable=False)
+    email = db.Column(db.String(120))
     animal_type = db.Column(db.String(20))
     meat_lbs = db.Column(db.String(20))
     city = db.Column(db.String(100))
@@ -40,10 +39,11 @@ def donate():
     if request.method == "POST":
         name = request.form.get("name")
         phone = request.form.get("phone")
+        email = request.form.get("email")
         animal_type = request.form.get("animal_type")
         meat_lbs = request.form.get("meat_lbs")
         city = request.form.get("city")
-        delivery_type = request.form.get("delivery_type")
+        delivery_type = "Masjid Ibrahim"
 
         if not phone:
             flash("Phone number is required!", "danger")
@@ -52,6 +52,7 @@ def donate():
         donation = Donation(
             name=name,
             phone=phone,
+            email=email,
             animal_type=animal_type,
             meat_lbs=meat_lbs,
             city=city,
@@ -59,10 +60,37 @@ def donate():
         )
         db.session.add(donation)
         db.session.commit()
+
+        if email:
+            send_email_confirmation(email, name, animal_type, meat_lbs)
+
         flash("Thank you for your donation!", "success")
         return redirect(url_for("donate"))
 
-    return render_template("donate.html", descriptions=DELIVERY_INFO)
+    return render_template("donate.html")
+
+def send_email_confirmation(email, name, animal_type, meat_lbs):
+    subject = "Thank You for Your Meat Donation!"
+    body = f"""Dear {name},
+
+Thank you for your generous donation of {meat_lbs} lbs of {animal_type.lower()} meat. Your contribution will be distributed via Masjid Ibrahim's local recipient pairing system.
+
+JazakAllah Khair for your support!
+
+— The Meat Donation Service Team
+"""
+    msg = EmailMessage()
+    msg["Subject"] = subject
+    msg["From"] = SMTP_EMAIL
+    msg["To"] = email
+    msg.set_content(body)
+
+    try:
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(SMTP_EMAIL, SMTP_PASSWORD)
+            server.send_message(msg)
+    except Exception as e:
+        print("Email failed:", e)
 
 @app.route("/dashboard")
 def dashboard():
@@ -113,10 +141,10 @@ def export_pdf():
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=letter)
 
-    data = [["Name", "Phone", "Animal", "Meat(lbs)", "City", "Delivery Type"]]
+    data = [["Name", "Phone", "Email", "Animal", "Meat(lbs)", "City", "Delivery Type"]]
     for d in donations:
         data.append([
-            d.name, d.phone, d.animal_type, d.meat_lbs + " lbs", d.city, d.delivery_type
+            d.name, d.phone, d.email or "", d.animal_type, d.meat_lbs + " lbs", d.city, d.delivery_type
         ])
 
     table = Table(data)
@@ -137,4 +165,3 @@ if __name__ == "__main__":
     with app.app_context():
         db.create_all()
     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 5000)))
-
